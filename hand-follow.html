@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Hand Follow ✋</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#090d14;color:#fff;font-family:Arial,sans-serif;text-align:center}
+h1{font-size:24px;margin:18px 0 5px}
+p{color:#aeb7c4;margin:6px 15px 15px}
+button{border:0;border-radius:30px;padding:13px 24px;background:#00d9ff;color:#001018;font-size:16px;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.55}
+#box{position:relative;width:94vw;max-width:720px;aspect-ratio:4/3;margin:18px auto;overflow:hidden;border-radius:20px;background:#151b25;border:2px solid #293342}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
+#target{position:absolute;display:none;width:64px;height:64px;transform:translate(-50%,-50%);z-index:5;pointer-events:none;filter:drop-shadow(0 0 8px #00eaff) drop-shadow(0 0 20px #008cff)}
+#status{margin:10px;font-weight:bold;color:#00d9ff}
+.note{font-size:13px;color:#788494}
+</style>
+</head>
+<body>
+<h1>✋ Gambar Mengikuti Tangan</h1>
+<p>Arahkan jari telunjuk ke kamera</p>
+<button id="start">📷 MULAI KAMERA</button>
+<div id="box">
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="canvas"></canvas>
+  <img id="target" src="https://em-content.zobj.net/source/apple/391/fire_1f525.png" alt="🔥">
+</div>
+<div id="status">Belum dimulai</div>
+<div class="note">Kamera hanya bisa digunakan jika website dibuka melalui HTTPS.</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script>
+const video=document.getElementById("video");
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+const target=document.getElementById("target");
+const status=document.getElementById("status");
+const start=document.getElementById("start");
+let stream=null, running=false;
+
+const hands=new Hands({
+  locateFile:file=>"https://cdn.jsdelivr.net/npm/@mediapipe/hands/"+file
+});
+hands.setOptions({
+  maxNumHands:1,
+  modelComplexity:1,
+  minDetectionConfidence:.55,
+  minTrackingConfidence:.55
+});
+
+hands.onResults(results=>{
+  if(!video.videoWidth)return;
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(!results.multiHandLandmarks?.length){
+    target.style.display="none";
+    status.textContent="🔎 Tangan belum terdeteksi";
+    status.style.color="#ffb000";
+    return;
+  }
+
+  const hand=results.multiHandLandmarks[0];
+  const finger=hand[8];
+
+  let x=(1-finger.x)*100;
+  let y=finger.y*100;
+  x=Math.max(4,Math.min(96,x));
+  y=Math.max(4,Math.min(96,y));
+
+  target.style.left=x+"%";
+  target.style.top=y+"%";
+  target.style.display="block";
+
+  status.textContent="🔥 Gambar mengikuti jari!";
+  status.style.color="#00ff88";
+
+  if(typeof drawConnectors==="function"){
+    drawConnectors(ctx,hand,HAND_CONNECTIONS,{color:"#00eaff",lineWidth:3});
+    drawLandmarks(ctx,hand,{color:"#fff",lineWidth:1,radius:4});
+  }
+});
+
+async function loop(){
+  if(!running)return;
+  try{await hands.send({image:video})}catch(e){console.log(e)}
+  requestAnimationFrame(loop);
+}
+
+start.onclick=async()=>{
+  try{
+    status.textContent="⏳ Meminta izin kamera...";
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:"user",width:{ideal:640},height:{ideal:480}},
+      audio:false
+    });
+    video.srcObject=stream;
+    await video.play();
+    running=true;
+    start.disabled=true;
+    start.textContent="✅ KAMERA AKTIF";
+    status.textContent="✋ Tunjukkan jari telunjuk";
+    status.style.color="#00ff88";
+    loop();
+  }catch(e){
+    console.error(e);
+    status.textContent="❌ Kamera ditolak: "+e.name;
+    status.style.color="#ff5555";
+  }
+};
+
+window.addEventListener("beforeunload",()=>{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+});
+</script>
+</body>
+</html>
